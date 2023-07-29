@@ -174,6 +174,14 @@ class Processor(Process):
                     self._evts.append(evt)
                     continue
 
+            if evt[0] == TIMER:
+                if any(
+                    x[0] == TIMER and x[1].function.__name__ != 'deadline_event'
+                    for x in self._evts
+                ) and evt[1].function.__name__ == 'deadline_event':
+                    self._evts.append(evt)
+                    continue
+
             if evt[0] == ACTIVATE:
                 self.sched.on_activate(evt[1])
                 self.monitor.observe(ProcOverheadEvent("JobActivation"))
