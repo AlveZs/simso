@@ -123,6 +123,14 @@ class TaskR(object):
         return count
 
     @property
+    def real_exceeded_count(self):
+        count = 0
+        for job in self.jobs:
+            if job.real_exceeded_deadline:
+                count += 1
+        return count
+
+    @property
     def migration_count(self):
         return sum(job.migration_count for job in self.jobs)
 
@@ -158,6 +166,7 @@ class JobR(object):
         self.response_time = None
         self.start_date = None
         self.absolute_deadline = job.absolute_deadline_cycles
+        self.ret = job.ret
 
     def terminate(self, date):
         self.end_date = date
@@ -182,6 +191,11 @@ class JobR(object):
     def exceeded_deadline(self):
         return self.end_date and (self.end_date > self.absolute_deadline
                                   or self.aborted)
+
+    @property
+    def real_exceeded_deadline(self):
+        return self.end_date and (self.end_date > self.absolute_deadline
+                                  or (self.aborted and self.ret > 0.1))
 
     @property
     def normalized_laxity(self):
@@ -368,6 +382,13 @@ class Results(object):
         return preemptions
 
     @property
+    def total_realeased_jobs(self):
+        jobs_count = 0
+        for task in self.tasks:
+            jobs_count += len(task.jobs)
+        return jobs_count
+
+    @property
     def total_task_migrations(self):
         migrations = 0
         for task in self.tasks.values():
@@ -386,6 +407,13 @@ class Results(object):
         count = 0
         for task in self.tasks.values():
             count += task.exceeded_count
+        return count
+
+    @property
+    def total_real_exceeded_count(self):
+        count = 0
+        for task in self.tasks.values():
+            count += task.real_exceeded_count
         return count
 
     def calc_load(self):

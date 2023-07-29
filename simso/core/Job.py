@@ -144,6 +144,14 @@ class Job(Process):
                 self._end_date or self._aborted)
 
     @property
+    def real_exceeded_deadline(self):
+        """
+        Ignores approximation errors.
+        """
+        return (self._absolute_deadline * self._sim.cycles_per_ms <
+                self._end_date or (self._aborted and self.ret < 1))
+
+    @property
     def start_date(self):
         """
         Date (in ms) when this job started executing
