@@ -58,3 +58,8 @@ target/
 
 # Pycharm stuff
 .idea
+simsogui
+.DS_Store
+*.xml
+/logs
+.vscode
