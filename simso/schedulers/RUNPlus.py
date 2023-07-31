@@ -3,7 +3,7 @@ Implementation of the RUN scheduler as introduced in RUN: Optimal
 Multiprocessor Real-Time Scheduling via Reduction to Uniprocessor
 by Regnier et al.
 
-RUN is a global multiprocessors scheduler for periodic-preemptive-independent
+RUN+ is a global multiprocessors scheduler for sporadic-preemptive-independent
 tasks with implicit deadlines.
 """
 
@@ -43,6 +43,7 @@ class RUNPlus(Scheduler):
         # Instanciate the reduction tree and the various sub-systems.
         self.reduce_iterations(list_servers)
 
+        # Initialize the budgets for all servers in reduction tree.
         self.initialize_budgets(list(set([s.parent for s in list_servers])))
 
 
@@ -130,7 +131,7 @@ class RUNPlus(Scheduler):
         task_server.is_active = True
         current_instant = self.sim.now()
         sched_logger.add_row("%s JOB ARRIVAL" % job.task.name)
-        add_job(self.sim, job, self.servers[job.task], subsystem.root)
+        add_job(self.sim, job, self.servers[job.task])
         delay = task_server.parent.next_deadline - current_instant
 
         subsystem.create_deadline_event(self.servers[job.task].parent, delay)
@@ -252,7 +253,11 @@ class ProperSubsystem(object):
         if time_since_last_update > 0:
             for server in self.virtual:
                 server.budget -= time_since_last_update
-                sched_logger.add_row("CURRENT BUDGET At %d SERVER %s BUDGET %d" % (self.sim.now(), server.identifier, server.budget))
+                sched_logger.add_row("CURRENT BUDGET At %d SERVER %s BUDGET %d" % (
+                    self.sim.now(),
+                    server.identifier,
+                    server.budget
+                ))
             self.last_update = self.sim.now()
 
     def resched(self, cpu):
@@ -273,13 +278,19 @@ class ProperSubsystem(object):
             self.resched(cpu)
 
     def deadline_event(self, server, cpu):
+        """
+        Deadline event. Happens when a server reaches its deadline.
+        """
         current_time = self.sim.now()
         if server.last_updated_by_deadline_event != current_time:
             self.update_budget()
             refresh_budget(server, current_time, self.sim.cycles_per_ms)
             # TODO: verify repetition
             if server.last_updated_by_deadline_event == current_time:
-                sched_logger.add_row("UPDATED BY DEADLINE OF %s AT %d" % (server.identifier, current_time))
+                sched_logger.add_row("UPDATED BY DEADLINE OF %s AT %d" % (
+                    server.identifier,
+                    current_time
+                ))
             if server.next_deadline > current_time:
                 self.create_deadline_event(server, delay=server.next_deadline - current_time)
             self.resched(cpu)
@@ -306,7 +317,7 @@ class ProperSubsystem(object):
 
         sched_logger.add_row("\nALL TASKS CHOSEN")
         if len(jobs) > len(self.processors):
-            sched_logger.add_row("CRITICAL ERROR AT: %d" % current_time)
+            sched_logger.add_row("ERROR n > m AT: %d" % current_time)
         for job in jobs:
             sched_logger.add_row("CHOSEN T%s" % job.task.identifier)
 
@@ -342,7 +353,12 @@ class ProperSubsystem(object):
         current_time = self.sim.now()
         sched_logger.add_row("\nSCHED FOR ROOT %s" % component_root.identifier)
         is_component_active = component_root.is_active
-        toggle_servers_activation(component_root, self.sim.now(), self.sim.cycles_per_ms, last_red_tree_status == False, self.root)
+        toggle_servers_activation(
+            component_root,
+            self.sim.now(),
+            self.sim.cycles_per_ms,
+            self.root
+        )
         if last_red_tree_status == False or (component_root.is_active and not is_component_active):
             # Set deadline event for all children
             task_servers = component_root.get_active_tasks_servers()
@@ -360,11 +376,10 @@ class ProperSubsystem(object):
         if component_root == self.root:
             jobs = select_jobs(component_root, self.virtual)
         elif not component_root.is_active:
-            children_total_utilization = ceil(sum([s.utilization for s in component_root.get_active_tasks_servers()]))
-            jobs = select_jobs_part(component_root, self.virtual, children_total_utilization)
+            jobs = select_jobs_part(component_root, self.virtual)
 
         return jobs
-        
+
     def create_deadline_event(self, target_server, delay):
         """
         Create deadline event for server.
@@ -411,11 +426,21 @@ class ProperSubsystem(object):
                 server.identifier = "σ" + server.task.name
             else:
                 server.identifier = "IDLE"
-            sched_logger.add_row("ID: %s, DUAL: %s, UTIL: %s, LEVEL: %d" % (server.identifier, server.is_dual, server.utilization, server.level))
+            sched_logger.add_row("ID: %s, DUAL: %s, UTIL: %s, LEVEL: %d" % (
+                server.identifier,
+                server.is_dual,
+                server.utilization,
+                server.level
+            ))
             return
         else:
             server.set_level(level)
-            sched_logger.add_row("ID: %s, DUAL: %s, UTIL: %s, LEVEL: %d" % (server.identifier, server.is_dual, server.utilization, server.level))
+            sched_logger.add_row("ID: %s, DUAL: %s, UTIL: %s, LEVEL: %d" % (
+                server.identifier,
+                server.is_dual,
+                server.utilization,
+                server.level
+            ))
 
         if server.is_dual:
             self.define_levels(server.child, level)

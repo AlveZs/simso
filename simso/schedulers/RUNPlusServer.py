@@ -34,7 +34,10 @@ class _Server(object):
             if hasattr(task, 'utilization'):
                 self.utilization += task.utilization
             else:
-                self.utilization += Fraction(Decimal(str(task.wcet))) / Fraction(Decimal(str(task.deadline)))
+                self.utilization += (
+                    Fraction(Decimal(str(task.wcet))) /
+                    Fraction(Decimal(str(task.deadline))
+                ))
 
     def add_deadline(self, current_instant, deadline):
         """
@@ -62,11 +65,15 @@ class _Server(object):
             for server in self.children:
                 if server.task:
                     if hasattr(server.task, "deadline"):
-                        self.deadlines.append(calculate_horizon(server, current_instant, cycles_per_ms))
+                        self.deadlines.append(calculate_horizon(
+                            server,
+                            current_instant,
+                            cycles_per_ms
+                        ))
                 else:
                     self.deadlines.append(server.next_deadline)
             self.deadlines = [d for d in self.deadlines if d > current_instant]
-            if len(self.deadlines):
+            if len(self.deadlines) > 0:
                 self.next_deadline = min(self.deadlines)
             else:
                 self.next_deadline = 0
@@ -149,12 +156,21 @@ class EDFServer(_Server):
         server.parent = self
 
     def set_task_servers(self):
+        """
+        Define the tasks servers of the EDF server.
+        """
         self.task_servers = get_real_child_tasks(self)
-    
+
     def set_component_leaves(self):
+        """
+        Define the leaves of the component that the server is a part of.
+        """
         self.component_leaves = [dual_server.child for dual_server in self.children]
 
     def get_active_tasks_servers(self):
+        """
+        Return the active task servers.
+        """
         return list(filter(lambda task_server: task_server.is_active, self.task_servers))
 
 
@@ -169,7 +185,7 @@ class DualServer(_Server):
         self.utilization = 1 - child.utilization
 
 
-def add_job(sim, job, server, tree_root):
+def add_job(sim, job, server):
     """
     Recursively update the deadlines of the parents of server.
     """
@@ -183,7 +199,7 @@ def add_job(sim, job, server, tree_root):
             server.last_updated_by_deadline_event != current_time and
             server.next_deadline > current_time
         )
-        calc_budget(
+        calculate_budget(
             server,
             current_time,
             sim.cycles_per_ms,
@@ -196,18 +212,14 @@ def select_jobs_part(server, virtual):
     """
     Select jobs for partitioned scheduling.
     """
-    active_servers = []
-    inactive_servers  = []
-
-    for server in get_component_leaves(server):
-        if server.budget > 0:
-            active_servers.append(server)
-        else:
-            inactive_servers.append(server)
+    active_servers = [l for l in get_component_leaves(server) if l.budget > 0]
 
     jobs = []
     for target_server in active_servers:
-        task_servers = [s for s in target_server.children if hasattr(s.task, "deadline") and s.task.is_active()]
+        task_servers = ([
+            s for s in target_server.children
+            if hasattr(s.task, "deadline") and s.task.is_active()
+        ])
         if len(task_servers) > 0:
             chosen_server = min(task_servers, key=lambda s: s.next_deadline)
             sched_logger.add_row("CHOSEN PART %s" % chosen_server.identifier)
@@ -294,7 +306,7 @@ def is_reduction_tree_needed(root_server):
 
     return is_active
 
-def toggle_servers_activation(server, current_instant, cycles_per_ms, is_red_tree_reactivated, tree_root):
+def toggle_servers_activation(server, current_instant, cycles_per_ms, tree_root):
     """
     Change the status of server.
     """
@@ -372,8 +384,7 @@ def adjust_reactivated_tree_budget(current_time, cycles_per_ms, current_budget, 
                          server.budget_excess,
                          total_budget,
                          server.budget
-                        )
-    )
+    ))
     server.refresh_deadlines(current_time, cycles_per_ms)
     server.create_job(current_time)
     server.budget = min(server.budget, total_budget)
@@ -443,7 +454,7 @@ def print_server_info(server, current_instant):
     Auxiliar method to print server info.
     """
     print("At instant:", current_instant)
-    if (server.is_dual):
+    if server.is_dual:
         print("Dual of %s" % (server.child.identifier))
     print("SERVER ID %s Dual: %s Budget: %d" % (server.identifier, server.is_dual, server.budget))
 
@@ -451,7 +462,12 @@ def log_server(server, current_instant):
     """
     Add server info to log.
     """
-    sched_logger.add_row("At %d SERVER %s DEADLINE %s BUDGET %s" % (current_instant, server.identifier, server.next_deadline, server.budget))
+    sched_logger.add_row("At %d SERVER %s DEADLINE %s BUDGET %s" % (
+        current_instant,
+        server.identifier,
+        server.next_deadline,
+        server.budget
+    ))
 
 def calculate_horizon(task_server, current_instant, cycles_per_ms):
     """
@@ -460,7 +476,10 @@ def calculate_horizon(task_server, current_instant, cycles_per_ms):
     horizon = -1
     if hasattr(task_server.task, "deadline"):
         if task_server.task.job:
-            current_deadline = (task_server.task.job.activation_date + task_server.task.deadline) * cycles_per_ms
+            current_deadline = (
+                (task_server.task.job.activation_date + task_server.task.deadline) *
+                cycles_per_ms
+            )
             if current_deadline > current_instant:
                 horizon = current_deadline
             else:
@@ -469,7 +488,7 @@ def calculate_horizon(task_server, current_instant, cycles_per_ms):
             horizon = current_instant + (task_server.task.deadline * cycles_per_ms)
     return horizon
 
-def calc_budget(
+def calculate_budget(
     server,
     current_time,
     cycles_per_ms,
@@ -559,13 +578,12 @@ def disable_tree(server):
     """
     if not server.is_dual and server.level == 0:
         return
+    server.is_active = False
+    if server.is_dual:
+        disable_tree(server.child)
     else:
-        server.is_active = False
-        if server.is_dual:
-            disable_tree(server.child)
-        else:
-            for child in server.children:
-                disable_tree(child)
+        for child in server.children:
+            disable_tree(child)
 
 def initialize_server_budget(current_time, cycles_per_ms, server):
     """
